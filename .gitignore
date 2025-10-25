@@ -18,7 +18,7 @@
 .cursor
 # OS X specific files.
 .DS_store
-compile_commands.json
+__MACOSX/
 
 #==============================================================================#
 # Explicit files to ignore (only matches one).
