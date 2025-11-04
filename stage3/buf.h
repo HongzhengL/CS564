@@ -117,8 +117,7 @@ class BufMgr {
     const Status disposePage(File *file, const int PageNo);  // dispose of page in file
     void printSelf();
 
-    const BufStats &getBufStats() const  // get buffer pool usage
-    {
+    const BufStats &getBufStats() const {  // get buffer pool usage
         return bufStats;
     }
     const void clearBufStats() {
