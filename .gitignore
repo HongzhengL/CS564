@@ -50,6 +50,8 @@ build/
 *.swp
 a.out
 testbuf
+test.*
+core.testbuf.*
 
 #==============================================================================#
 # Backup artifacts
