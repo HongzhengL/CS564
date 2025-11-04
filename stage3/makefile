@@ -45,7 +45,7 @@ testbuf.pure:	$(OBJS)
 		$(CXX) $(CXXFLAGS) -c $<
 
 clean:
-		rm -f core \#* *.bak *~ *.o test.1 test.2 test.3 test.4 testbuf testbuf.pure .pure
+		rm -f core \#* *.bak *~ *.o test.1 test.2 test.3 test.4 testbuf testbuf.pure .pure G19.zip
 
 depend:
 		makedepend -I /s/gcc/include/g++ -f$(MAKEFILE) \
@@ -53,3 +53,5 @@ depend:
 
 # DO NOT DELETE THIS LINE -- make depend depends on it.
 
+zip:
+	mkdir -p G19 && cp buf.C G19.txt G19 && zip -r G19.zip G19/ && rm -rf G19/

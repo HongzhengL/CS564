@@ -1,9 +1,16 @@
 /**
  * @file buf.C
+ * @brief Buffer manager for database pages using a clock (second-chance) policy.
+ *        Provides page read/pin, unpin/dirty-mark, page allocation/disposal,
+ *        per-file flush, and destructor-time write-back. Uses a hash table for
+ *        (File*, pageNo) → frame lookup and tracks ref/pin/dirty metadata.
+ *
+ *        _purpose_: Implements the BufMgr class (buffer pool manager) and its replacement
+ *        policy. See "Design notes" below for invariants and error-handling policy.
+ *
  * @author Hongzheng Li (hli2225@wisc.edu)
- * @author Junnan Li
- * @author Bobby Tang
- * @brief
+ * @author Junnan Li (jli2786@wisc.edu)
+ * @author Bobby Tang (tang287@wisc.edu)
  * @date 2025-10-25
  *
  * @copyright Copyright (c) 2025

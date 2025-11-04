@@ -1,0 +1,6 @@
+- Hongzheng Li (hli2225@wisc.edu)
+    - Implement `allocBuf` function
+- Junnan Li (jli2786@wisc.edu)
+    - Implement `readPage` function
+- Bobby Tang (tang287@wisc.edu)
+    - Implement `unPinPage` and `allocPage` function
