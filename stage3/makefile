@@ -9,7 +9,7 @@
 #
 
 LD =		ld
-LDFLAGS =	#-fsanitize=address,undefined
+LDFLAGS =	-fsanitize=address,undefined
 
 CXX =           g++
 CXXFLAGS =	-g -Wall

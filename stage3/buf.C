@@ -8,9 +8,9 @@
  *        _purpose_: Implements the BufMgr class (buffer pool manager) and its replacement
  *        policy. See "Design notes" below for invariants and error-handling policy.
  *
- * @author Hongzheng Li (hli2225@wisc.edu)
- * @author Junnan Li (jli2786@wisc.edu)
- * @author Bobby Tang (tang287@wisc.edu)
+ * @author Hongzheng Li (hli2225)
+ * @author Junnan Li (jli2786)
+ * @author Bobby Tang (tang287)
  * @date 2025-10-25
  *
  * @copyright Copyright (c) 2025
@@ -67,6 +67,7 @@ BufMgr::BufMgr(const int bufs) {
     hashTable = new BufHashTbl(htsize);  // allocate the buffer hash table
 
     clockHand = bufs - 1;
+    bufStats.clear();
 }
 
 /**
@@ -88,12 +89,16 @@ BufMgr::~BufMgr() {
             cout << "flushing page " << tmpbuf->pageNo << " from frame " << i << endl;
 #endif
 
-            tmpbuf->file->writePage(tmpbuf->pageNo, &(bufPool[i]));
+            Status status = tmpbuf->file->writePage(tmpbuf->pageNo, &(bufPool[i]));
+            if (status == Status::OK) {
+                bufStats.diskwrites++;
+            }
         }
     }
 
     delete[] bufTable;
     delete[] bufPool;
+    delete hashTable;
 }
 
 /**
@@ -115,7 +120,7 @@ BufMgr::~BufMgr() {
  * @return OK on success;
  *         BUFFEREXCEEDED if every frame is pinned;
  *         UNIXERR if an I/O error occurs while writing a dirty victim page.
- *         HASHTABLERROR if hash table error. (Not on write up!!!)
+ *         HASHTABLERROR if hash table error.
  *
  * @param frame [out] The frame number selected for allocation.
  */
@@ -144,6 +149,7 @@ const Status BufMgr::allocBuf(int &frame) {
                 if (status != Status::OK) {
                     return Status::UNIXERR;
                 }
+                bufStats.diskwrites++;
             }
 
             status = this->hashTable->remove(tmpbuf->file, tmpbuf->pageNo);
@@ -189,6 +195,8 @@ const Status BufMgr::allocBuf(int &frame) {
  * @param page   [out] Pointer to the in-memory page in the buffer pool.
  */
 const Status BufMgr::readPage(File *file, const int PageNo, Page *&page) {
+    bufStats.accesses++;
+
     int frameNo = -1;
     Status err = hashTable->lookup(file, PageNo, frameNo);
     if (err == Status::HASHNOTFOUND) {
@@ -202,6 +210,7 @@ const Status BufMgr::readPage(File *file, const int PageNo, Page *&page) {
         if (err != Status::OK) {
             return Status::UNIXERR;
         }
+        bufStats.diskreads++;
 
         err = this->hashTable->insert(file, PageNo, frameNo);
         if (err != Status::OK) {
@@ -280,10 +289,13 @@ const Status BufMgr::unPinPage(File *file, const int PageNo, const bool dirty) {
  * @param page   [out] Pointer to the in-memory page in the buffer pool.
  */
 const Status BufMgr::allocPage(File *file, int &pageNo, Page *&page) {
+    bufStats.accesses++;
+
     Status err = file->allocatePage(pageNo);
     if (err != Status::OK) {
         return err;
     }
+    bufStats.diskreads++;
 
     int frameNo = -1;
     err = allocBuf(frameNo);
@@ -363,6 +375,7 @@ const Status BufMgr::flushFile(const File *file) {
                 if ((status = tmpbuf->file->writePage(tmpbuf->pageNo, &(bufPool[i]))) != OK) return status;
 
                 tmpbuf->dirty = false;
+                bufStats.diskwrites++;
             }
 
             hashTable->remove(file, tmpbuf->pageNo);
