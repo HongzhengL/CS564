@@ -50,6 +50,7 @@ build/
 *.swp
 a.out
 testbuf
+testfile
 test.*
 core.testbuf.*
 
