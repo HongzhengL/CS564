@@ -289,6 +289,7 @@ HeapFileScan::~HeapFileScan() {
 }
 
 const Status HeapFileScan::markScan() {
+    if (curRec.pageNo < 0 || curPage == NULL) return BADSCANID;
     // make a snapshot of the state of the scan
     markedPageNo = curPageNo;
     markedRec = curRec;
@@ -297,7 +298,9 @@ const Status HeapFileScan::markScan() {
 
 const Status HeapFileScan::resetScan() {
     Status status;
-    if (markedPageNo != curPageNo) {
+    if (markedPageNo < 0) return BADSCANID;
+
+    if (curPage == NULL || markedPageNo != curPageNo) {
         if (curPage != NULL) {
             status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
             if (status != OK) return status;
@@ -383,16 +386,18 @@ const Status HeapFileScan::getRecord(Record &rec) {
 
 // delete record from file.
 const Status HeapFileScan::deleteRecord() {
-    Status status;
+    if (curPage == NULL || curRec.pageNo < 0) return BADSCANID;
+    Status status = curPage->deleteRecord(curRec);
+    if (status != OK) return status;
 
-    // delete the "current" record from the page
-    status = curPage->deleteRecord(curRec);
     curDirtyFlag = true;
 
-    // reduce count of number of records in the file
-    headerPage->recCnt--;
-    hdrDirtyFlag = true;
-    return status;
+    if (headerPage) {
+        headerPage->recCnt--;
+        hdrDirtyFlag = true;
+    }
+
+    return OK;
 }
 
 // mark current page of scan dirty
