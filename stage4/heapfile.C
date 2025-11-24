@@ -192,7 +192,7 @@ const int HeapFile::getRecCnt() const { return (headerPage) ? headerPage->recCnt
 // and pinned.  returns a pointer to the record via the rec parameter
 
 const Status HeapFile::getRecord(const RID &rid, Record &rec) {
-    if (rid.pageNo < 0 || rid.slotNo == 0) return BADRID;
+    if (rid.pageNo < 0) return BADRID;
 
     Status status = OK;
 
@@ -468,23 +468,104 @@ InsertFileScan::~InsertFileScan() {
     Status status;
     // unpin last page of the scan
     if (curPage != NULL) {
-        status = bufMgr->unPinPage(filePtr, curPageNo, true);
+        status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
         curPage = NULL;
-        curPageNo = 0;
+        curPageNo = -1;
+        curDirtyFlag = false;
         if (status != OK) cerr << "error in unpin of data page\n";
     }
 }
 
 // Insert a record into the file
 const Status InsertFileScan::insertRecord(const Record &rec, RID &outRid) {
-    Page *newPage;
-    int newPageNo;
-    Status status, unpinstatus;
-    RID rid;
+    Page *newPage = NULL;
+    int newPageNo = -1;
+    Status status;
 
     // check for very large records
     if ((unsigned int)rec.length > PAGESIZE - DPFIXED) {
         // will never fit on a page, so don't even bother looking
         return INVALIDRECLEN;
     }
+
+    if (!headerPage) return BADFILEPTR;
+
+    // Ensure the current page points to the last page of the heap file.
+    if (curPage == NULL || curPageNo != headerPage->lastPage) {
+        if (curPage != NULL) {
+            status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+            if (status != OK) return status;
+            curPage = NULL;
+            curPageNo = -1;
+            curDirtyFlag = false;
+        }
+
+        if (headerPage->lastPage == -1) return BADFILE;
+
+        status = bufMgr->readPage(filePtr, headerPage->lastPage, curPage);
+        if (status != OK) {
+            curPage = NULL;
+            curPageNo = -1;
+            return status;
+        }
+        curPageNo = headerPage->lastPage;
+        curDirtyFlag = false;
+    }
+
+    status = curPage->insertRecord(rec, outRid);
+    if (status == OK) {
+        headerPage->recCnt++;
+        hdrDirtyFlag = true;
+        curDirtyFlag = true;
+        curRec = outRid;
+        return OK;
+    }
+
+    if (status != NOSPACE) return status;
+
+    // Need to allocate a new page and append it.
+    status = bufMgr->allocPage(filePtr, newPageNo, newPage);
+    if (status != OK) return status;
+
+    newPage->init(newPageNo);
+
+    // Link the previous last page to the new page.
+    if (curPage != NULL) {
+        Status linkStatus = curPage->setNextPage(newPageNo);
+        if (linkStatus != OK) {
+            bufMgr->unPinPage(filePtr, newPageNo, true);
+            return linkStatus;
+        }
+        curDirtyFlag = true;
+
+        Status unpinStatus = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+        if (unpinStatus != OK) {
+            bufMgr->unPinPage(filePtr, newPageNo, true);
+            return unpinStatus;
+        }
+    }
+
+    headerPage->lastPage = newPageNo;
+    headerPage->pageCnt++;
+    hdrDirtyFlag = true;
+
+    curPage = newPage;
+    curPageNo = newPageNo;
+    curDirtyFlag = false;
+
+    status = curPage->insertRecord(rec, outRid);
+    if (status != OK) {
+        bufMgr->unPinPage(filePtr, curPageNo, true);
+        curPage = NULL;
+        curPageNo = -1;
+        curDirtyFlag = false;
+        return status;
+    }
+
+    headerPage->recCnt++;
+    hdrDirtyFlag = true;
+    curDirtyFlag = true;
+    curRec = outRid;
+
+    return OK;
 }
