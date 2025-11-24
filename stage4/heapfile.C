@@ -3,20 +3,78 @@
 
 // routine to create a heapfile
 const Status createHeapFile(const string fileName) {
-    File *file;
-    Status status;
-    FileHdrPage *hdrPage;
-    int hdrPageNo;
-    int newPageNo;
-    Page *newPage;
+    if (fileName.empty()) return BADFILE;
 
-    // try to open the file. This should return an error
+    File *file = NULL;
+    Status status;
+    Page *hdrPagePtr = NULL;
+    Page *dataPagePtr = NULL;
+    int hdrPageNo = -1;
+    int dataPageNo = -1;
+
+    // Check if the heap file already exists.
     status = db.openFile(fileName, file);
-    if (status != OK) {
-        // file doesn't exist. First create it and allocate
-        // an empty header page and data page.
+    if (status == OK) {
+        db.closeFile(file);
+        return FILEEXISTS;
+    } else if (status != UNIXERR) {
+        // Failed for a reason other than "file not found".
+        return status;
     }
-    return (FILEEXISTS);
+
+    // Create the new heap file at the DB layer.
+    status = db.createFile(fileName);
+    if (status != OK) return status;
+
+    // Open the freshly created file so that pages can be allocated.
+    status = db.openFile(fileName, file);
+    if (status != OK) return status;
+
+    // Allocate and initialize the header page.
+    status = bufMgr->allocPage(file, hdrPageNo, hdrPagePtr);
+    if (status != OK) {
+        db.closeFile(file);
+        return status;
+    }
+
+    // Allocate the first data page and initialize it.
+    status = bufMgr->allocPage(file, dataPageNo, dataPagePtr);
+    if (status != OK) {
+        bufMgr->unPinPage(file, hdrPageNo, false);
+        db.closeFile(file);
+        return status;
+    }
+    dataPagePtr->init(dataPageNo);
+
+    // Initialize the header page metadata.
+    FileHdrPage *hdrPage = reinterpret_cast<FileHdrPage *>(hdrPagePtr);
+    memset(hdrPage, 0, sizeof(FileHdrPage));
+    strncpy(hdrPage->fileName, fileName.c_str(), MAXNAMESIZE - 1);
+    hdrPage->fileName[MAXNAMESIZE - 1] = '\0';
+    hdrPage->firstPage = dataPageNo;
+    hdrPage->lastPage = dataPageNo;
+    hdrPage->pageCnt = 2;  // header + first data page
+    hdrPage->recCnt = 0;
+
+    // Unpin the allocated pages and mark them dirty so they get written.
+    status = bufMgr->unPinPage(file, dataPageNo, true);
+    if (status != OK) {
+        bufMgr->unPinPage(file, hdrPageNo, true);
+        db.closeFile(file);
+        return status;
+    }
+
+    status = bufMgr->unPinPage(file, hdrPageNo, true);
+    if (status != OK) {
+        db.closeFile(file);
+        return status;
+    }
+
+    // Close the file now that initialization is complete.
+    status = db.closeFile(file);
+    if (status != OK) return status;
+
+    return OK;
 }
 
 // routine to destroy a heapfile
