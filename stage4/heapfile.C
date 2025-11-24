@@ -221,28 +221,51 @@ const Status HeapFile::getRecord(const RID &rid, Record &rec) {
     return status;
 }
 
-HeapFileScan::HeapFileScan(const string &name, Status &status) : HeapFile(name, status) {
-    filter = NULL;
-}
+HeapFileScan::HeapFileScan(const string &name, Status &status)
+    : HeapFile(name, status), offset(0), length(0), type(STRING), filter(NULL), op(EQ), markedPageNo(-1), markedRec(NULLRID) {}
 
 const Status HeapFileScan::startScan(const int offset_, const int length_, const Datatype type_, const char *filter_,
                                      const Operator op_) {
-    if (!filter_) {  // no filtering requested
+    Status status;
+
+    if (!filter_) {
+        // Unconditional scan.
         filter = NULL;
+    } else {
+        if ((offset_ < 0 || length_ < 1) || (type_ != STRING && type_ != INTEGER && type_ != FLOAT) ||
+            ((type_ == INTEGER && length_ != sizeof(int)) || (type_ == FLOAT && length_ != sizeof(float))) ||
+            (op_ != LT && op_ != LTE && op_ != EQ && op_ != GTE && op_ != GT && op_ != NE)) {
+            return BADSCANPARM;
+        }
+        offset = offset_;
+        length = length_;
+        type = type_;
+        filter = filter_;
+        op = op_;
+    }
+
+    markedPageNo = -1;
+    markedRec = NULLRID;
+
+    // Reset the scan to the first data page.
+    if (curPage != NULL) {
+        status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+        if (status != OK) return status;
+        curPage = NULL;
+        curPageNo = -1;
+        curDirtyFlag = false;
+    }
+
+    if (!headerPage || headerPage->firstPage == -1) {
+        curRec = NULLRID;
         return OK;
     }
 
-    if ((offset_ < 0 || length_ < 1) || (type_ != STRING && type_ != INTEGER && type_ != FLOAT) ||
-        (type_ == INTEGER && length_ != sizeof(int) || type_ == FLOAT && length_ != sizeof(float)) ||
-        (op_ != LT && op_ != LTE && op_ != EQ && op_ != GTE && op_ != GT && op_ != NE)) {
-        return BADSCANPARM;
-    }
-
-    offset = offset_;
-    length = length_;
-    type = type_;
-    filter = filter_;
-    op = op_;
+    status = bufMgr->readPage(filePtr, headerPage->firstPage, curPage);
+    if (status != OK) return status;
+    curPageNo = headerPage->firstPage;
+    curDirtyFlag = false;
+    curRec = NULLRID;
 
     return OK;
 }
@@ -253,8 +276,9 @@ const Status HeapFileScan::endScan() {
     if (curPage != NULL) {
         status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
         curPage = NULL;
-        curPageNo = 0;
+        curPageNo = -1;
         curDirtyFlag = false;
+        curRec = NULLRID;
         return status;
     }
     return OK;
@@ -291,17 +315,69 @@ const Status HeapFileScan::resetScan() {
 }
 
 const Status HeapFileScan::scanNext(RID &outRid) {
-    Status status = OK;
+    Status status;
     RID nextRid;
-    RID tmpRid;
-    int nextPageNo;
     Record rec;
+
+    if (!headerPage) return BADSCANID;
+
+    if (curPage == NULL) {
+        if (headerPage->firstPage == -1) return FILEEOF;
+        status = bufMgr->readPage(filePtr, headerPage->firstPage, curPage);
+        if (status != OK) return status;
+        curPageNo = headerPage->firstPage;
+        curDirtyFlag = false;
+        curRec = NULLRID;
+    }
+
+    while (true) {
+        if (curRec.pageNo == curPageNo && curRec.slotNo != -1) {
+            status = curPage->nextRecord(curRec, nextRid);
+        } else {
+            status = curPage->firstRecord(nextRid);
+        }
+
+        if (status == OK) {
+            status = curPage->getRecord(nextRid, rec);
+            if (status != OK) return status;
+
+            curRec = nextRid;
+            if (matchRec(rec)) {
+                outRid = curRec;
+                return OK;
+            } else {
+                continue;
+            }
+        }
+
+        if (status != ENDOFPAGE && status != NORECORDS) return status;
+
+        int nextPageNo;
+        status = curPage->getNextPage(nextPageNo);
+        if (status != OK) return status;
+
+        if (nextPageNo == -1) return FILEEOF;
+
+        status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+        if (status != OK) return status;
+
+        status = bufMgr->readPage(filePtr, nextPageNo, curPage);
+        if (status != OK) {
+            curPage = NULL;
+            curPageNo = -1;
+            return status;
+        }
+        curPageNo = nextPageNo;
+        curDirtyFlag = false;
+        curRec = NULLRID;
+    }
 }
 
 // returns pointer to the current record.  page is left pinned
 // and the scan logic is required to unpin the page
 
 const Status HeapFileScan::getRecord(Record &rec) {
+    if (curPage == NULL || curRec.pageNo < 0) return BADSCANID;
     return curPage->getRecord(curRec, rec);
 }
 
