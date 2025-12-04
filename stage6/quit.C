@@ -20,16 +20,15 @@ extern AttrCatalog *attrCat;
 // No return value.
 //
 
-void UT_Quit(void)
-{
-  // close relcat and attrcat
+void UT_Quit(void) {
+    // close relcat and attrcat
 
-  delete relCat;
-  delete attrCat;
+    delete relCat;
+    delete attrCat;
 
-  // delete bufMgr to flush out all dirty pages
+    // delete bufMgr to flush out all dirty pages
 
-  delete bufMgr;
+    delete bufMgr;
 
-  exit(1);
+    exit(1);
 }

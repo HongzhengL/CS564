@@ -22,11 +22,10 @@ using namespace std;
 // Prototypes for utility layer functions
 //
 
-const Status UT_Load(const string & relation, 
-		     const string & fileName);
+const Status UT_Load(const string &relation, const string &fileName);
 
 const Status UT_Print(string relation);
 
-void   UT_Quit(void);
+void UT_Quit(void);
 
 #endif
