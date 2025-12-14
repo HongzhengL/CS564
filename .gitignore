@@ -53,6 +53,10 @@ testbuf
 testfile
 test.*
 core.testbuf.*
+minirel
+out.*
+dbcreate
+dbdestroy
 
 #==============================================================================#
 # Backup artifacts
