@@ -1,0 +1,6 @@
+- Bobby Tang (tang287@wisc.edu)
+    - Implement select.C
+- Hongzheng Li (hli2225@wisc.edu)
+    - Implement delete.C
+- Junnan Li (jli2786@wisc.edu)
+    - Implement insert.C

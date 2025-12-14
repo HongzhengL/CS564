@@ -76,3 +76,5 @@ depend:
 
 
 # DO NOT DELETE THIS LINE -- make depend depends on it.
+zip:
+	mkdir -p G19 && cp delete.C insert.C select.C G19.txt G19 && zip -r G19.zip G19/ && rm -rf G19/
